@@ -7,6 +7,27 @@ function normalizarTexto(texto) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function calcularSimilaridade(a, b) {
+
+  a = normalizarTexto(a);
+  b = normalizarTexto(b);
+
+  if (a === b) return 100;
+
+  let pontos = 0;
+
+  const palavrasA = a.split(" ");
+  const palavrasB = b.split(" ");
+
+  palavrasA.forEach((palavra) => {
+    if (palavrasB.includes(palavra)) {
+      pontos += 1;
+    }
+  });
+
+  return pontos;
+}
+
 async function buscarDeputado(nomeBusca) {
 
   const response = await axios.get(
@@ -18,35 +39,30 @@ async function buscarDeputado(nomeBusca) {
 
   const deputados = response.data.dados;
 
-  const busca = normalizarTexto(nomeBusca);
+  let melhorResultado = null;
+  let maiorPontuacao = 0;
 
-  // prioridade 1: nome completo
-  let deputado = deputados.find((d) =>
-    normalizarTexto(d.nome) === busca
-  );
+  deputados.forEach((deputado) => {
 
-  // prioridade 2: começa com
-  if (!deputado) {
-    deputado = deputados.find((d) =>
-      normalizarTexto(d.nome).startsWith(busca)
+    const score = calcularSimilaridade(
+      nomeBusca,
+      deputado.nome
     );
-  }
 
-  // prioridade 3: contém
-  if (!deputado) {
-    deputado = deputados.find((d) =>
-      normalizarTexto(d.nome).includes(busca)
-    );
-  }
+    if (score > maiorPontuacao) {
+      maiorPontuacao = score;
+      melhorResultado = deputado;
+    }
+  });
 
-  if (!deputado) {
+  if (!melhorResultado || maiorPontuacao === 0) {
     return null;
   }
 
   return {
-    nome: deputado.nome,
-    partido: deputado.siglaPartido,
-    uf: deputado.siglaUf
+    nome: melhorResultado.nome,
+    partido: melhorResultado.siglaPartido,
+    uf: melhorResultado.siglaUf
   };
 }
 
