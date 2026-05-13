@@ -1,6 +1,8 @@
 const express = require("express");
 const dotenv = require("dotenv");
-const { buscarDeputado } = require("./services/camara");
+
+const { buscarDeputado, buscarProjetoLei } = require("./services/camara");
+const { buscarSenador } = require("./services/senado");
 
 dotenv.config();
 
@@ -8,19 +10,18 @@ const app = express();
 app.use(express.json());
 
 app.post("/webhook", async (req, res) => {
-  console.log("Webhook recebido");
-
   const intent = req.body.queryResult.intent.displayName;
+  const params = req.body.queryResult.parameters;
 
   try {
     if (intent === "BuscarPolitico") {
+      const nome = params.politico;
 
-      const nome =
-        req.body.queryResult.parameters.politico;
+      let politico = await buscarDeputado(nome);
 
-      console.log("Buscando:", nome);
-
-      const politico = await buscarDeputado(nome);
+      if (!politico) {
+        politico = await buscarSenador(nome);
+      }
 
       if (!politico) {
         return res.json({
@@ -30,16 +31,33 @@ app.post("/webhook", async (req, res) => {
 
       return res.json({
         fulfillmentText:
-          `${politico.nome} é do partido ${politico.partido} e representa ${politico.uf}.`
+          `${politico.nome} é ${politico.tipo}, do partido ${politico.partido}, e representa ${politico.uf}.`
+      });
+    }
+
+    if (intent === "BuscarProjetoLei") {
+      const tipo = params.tipo || "PL";
+      const numero = params.numero;
+      const ano = params.ano;
+
+      const projeto = await buscarProjetoLei(tipo, numero, ano);
+
+      if (!projeto) {
+        return res.json({
+          fulfillmentText: "Projeto de lei não encontrado."
+        });
+      }
+
+      return res.json({
+        fulfillmentText:
+          `${projeto.tipo} ${projeto.numero}/${projeto.ano}: ${projeto.ementa}`
       });
     }
 
     return res.json({
       fulfillmentText: "Intent não reconhecida."
     });
-
   } catch (error) {
-
     console.error(error);
 
     return res.json({
