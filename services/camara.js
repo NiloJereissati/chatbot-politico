@@ -34,11 +34,11 @@ async function buscarProjetoLei(tipo, numero, ano) {
   const response = await axios.get(
     "https://dadosabertos.camara.leg.br/api/v2/proposicoes",
     {
-      timeout: 3000,
+      timeout: 5000,
       params: {
-        siglaTipo: tipo || "PL",
-        numero,
-        ano
+        siglaTipo: tipo,
+        numero: numero,
+        ano: ano
       }
     }
   );

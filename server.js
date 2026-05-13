@@ -37,14 +37,22 @@ app.post("/webhook", async (req, res) => {
 
    if (intent === "BuscarProjetoLei") {
   const tipo = params.Tipodeprojeto || "PL";
+
   const numero = Array.isArray(params.numero)
     ? params.numero[0]
     : params.numero;
-  const ano = params.ano;
 
-  console.log("Projeto:", { tipo, numero, ano });
+  const ano = Array.isArray(params.ano)
+    ? params.ano[0]
+    : params.ano;
 
-  const projeto = await buscarProjetoLei(tipo, numero, ano);
+  console.log("Projeto recebido:", { tipo, numero, ano });
+
+  const projeto = await buscarProjetoLei(
+    tipo.toUpperCase(),
+    Number(numero),
+    Number(ano)
+  );
 
   if (!projeto) {
     return res.json({
@@ -53,8 +61,7 @@ app.post("/webhook", async (req, res) => {
   }
 
   return res.json({
-    fulfillmentText:
-      `${projeto.tipo} ${projeto.numero}/${projeto.ano}: ${projeto.ementa}`
+    fulfillmentText: `${projeto.tipo} ${projeto.numero}/${projeto.ano}: ${projeto.ementa}`
   });
 }
 
