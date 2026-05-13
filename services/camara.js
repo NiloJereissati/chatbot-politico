@@ -1,14 +1,23 @@
 const axios = require("axios");
 
 async function buscarDeputado(nome) {
-  const res = await axios.get(
+
+  const response = await axios.get(
     "https://dadosabertos.camara.leg.br/api/v2/deputados",
-    { params: { nome } }
+    {
+      timeout: 2000
+    }
   );
 
-  const deputado = res.data.dados[0];
+  const deputados = response.data.dados;
 
-  if (!deputado) return null;
+  const deputado = deputados.find((d) =>
+    d.nome.toLowerCase().includes(nome.toLowerCase())
+  );
+
+  if (!deputado) {
+    return null;
+  }
 
   return {
     nome: deputado.nome,
@@ -17,16 +26,6 @@ async function buscarDeputado(nome) {
   };
 }
 
-async function buscarProjetoLei(numero) {
-  const res = await axios.get(
-    "https://dadosabertos.camara.leg.br/api/v2/proposicoes",
-    { params: { numero } }
-  );
-
-  return res.data.dados[0] || null;
-}
-
 module.exports = {
-  buscarDeputado,
-  buscarProjetoLei
+  buscarDeputado
 };
