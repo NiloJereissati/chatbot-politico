@@ -7,65 +7,55 @@ function normalizarTexto(texto) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function calcularSimilaridade(a, b) {
-
-  a = normalizarTexto(a);
-  b = normalizarTexto(b);
-
-  if (a === b) return 100;
-
-  let pontos = 0;
-
-  const palavrasA = a.split(" ");
-  const palavrasB = b.split(" ");
-
-  palavrasA.forEach((palavra) => {
-    if (palavrasB.includes(palavra)) {
-      pontos += 1;
-    }
-  });
-
-  return pontos;
-}
-
 async function buscarDeputado(nomeBusca) {
-
   const response = await axios.get(
     "https://dadosabertos.camara.leg.br/api/v2/deputados",
+    { timeout: 3000 }
+  );
+
+  const busca = normalizarTexto(nomeBusca);
+  const deputados = response.data.dados;
+
+  const deputado = deputados.find((d) =>
+    normalizarTexto(d.nome).includes(busca)
+  );
+
+  if (!deputado) return null;
+
+  return {
+    tipo: "Deputado federal",
+    nome: deputado.nome,
+    partido: deputado.siglaPartido,
+    uf: deputado.siglaUf
+  };
+}
+
+async function buscarProjetoLei(tipo, numero, ano) {
+  const response = await axios.get(
+    "https://dadosabertos.camara.leg.br/api/v2/proposicoes",
     {
-      timeout: 3000
+      timeout: 3000,
+      params: {
+        siglaTipo: tipo || "PL",
+        numero,
+        ano
+      }
     }
   );
 
-  const deputados = response.data.dados;
+  const projeto = response.data.dados[0];
 
-  let melhorResultado = null;
-  let maiorPontuacao = 0;
-
-  deputados.forEach((deputado) => {
-
-    const score = calcularSimilaridade(
-      nomeBusca,
-      deputado.nome
-    );
-
-    if (score > maiorPontuacao) {
-      maiorPontuacao = score;
-      melhorResultado = deputado;
-    }
-  });
-
-  if (!melhorResultado || maiorPontuacao === 0) {
-    return null;
-  }
+  if (!projeto) return null;
 
   return {
-    nome: melhorResultado.nome,
-    partido: melhorResultado.siglaPartido,
-    uf: melhorResultado.siglaUf
+    tipo: projeto.siglaTipo,
+    numero: projeto.numero,
+    ano: projeto.ano,
+    ementa: projeto.ementa
   };
 }
 
 module.exports = {
-  buscarDeputado
+  buscarDeputado,
+  buscarProjetoLei
 };
