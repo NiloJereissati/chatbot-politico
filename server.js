@@ -35,24 +35,28 @@ app.post("/webhook", async (req, res) => {
       });
     }
 
-    if (intent === "BuscarProjetoLei") {
-      const tipo = params.tipo || "PL";
-      const numero = params.numero;
-      const ano = params.ano;
+   if (intent === "BuscarProjetoLei") {
+  const tipo = params.Tipodeprojeto || "PL";
+  const numero = Array.isArray(params.numero)
+    ? params.numero[0]
+    : params.numero;
+  const ano = params.ano;
 
-      const projeto = await buscarProjetoLei(tipo, numero, ano);
+  console.log("Projeto:", { tipo, numero, ano });
 
-      if (!projeto) {
-        return res.json({
-          fulfillmentText: "Projeto de lei não encontrado."
-        });
-      }
+  const projeto = await buscarProjetoLei(tipo, numero, ano);
 
-      return res.json({
-        fulfillmentText:
-          `${projeto.tipo} ${projeto.numero}/${projeto.ano}: ${projeto.ementa}`
-      });
-    }
+  if (!projeto) {
+    return res.json({
+      fulfillmentText: "Projeto de lei não encontrado."
+    });
+  }
+
+  return res.json({
+    fulfillmentText:
+      `${projeto.tipo} ${projeto.numero}/${projeto.ano}: ${projeto.ementa}`
+  });
+}
 
     return res.json({
       fulfillmentText: "Intent não reconhecida."
