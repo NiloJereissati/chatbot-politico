@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 function normalizarTexto(texto) {
-  return texto
+  return String(texto || "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
