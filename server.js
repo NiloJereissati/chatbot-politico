@@ -34,7 +34,7 @@ function normalizarTexto(texto) {
 }
 
 function formatarPolitico(politico) {
-  return `${politico.nome} e ${politico.tipo}, do partido ${politico.partido}, e representa ${politico.uf}.`;
+  return `${politico.nome} é ${politico.tipo}, do partido ${politico.partido}, e representa ${politico.uf}.`;
 }
 
 function formatarProjeto(projeto) {
@@ -43,7 +43,7 @@ function formatarProjeto(projeto) {
 
 async function responderPolitico(nome) {
   if (!nome) {
-    return "Informe o nome do politico que voce quer consultar.";
+    return "Informe o nome do político que você quer consultar.";
   }
 
   let politico = await buscarDeputado(nome);
@@ -53,7 +53,7 @@ async function responderPolitico(nome) {
   }
 
   if (!politico) {
-    return "Politico nao encontrado.";
+    return "Político não encontrado.";
   }
 
   return formatarPolitico(politico);
@@ -64,7 +64,7 @@ async function responderProjetoLei({ tipo = "PL", numero, ano }) {
   const anoProjeto = Number(getFirst(ano));
 
   if (!numeroProjeto || !anoProjeto) {
-    return "Informe o tipo, numero e ano do projeto. Exemplo: PL 2630/2020.";
+    return "Informe o tipo, número e ano do projeto. Exemplo: PL 2630/2020.";
   }
 
   const projeto = await buscarProjetoLei(
@@ -74,10 +74,57 @@ async function responderProjetoLei({ tipo = "PL", numero, ano }) {
   );
 
   if (!projeto) {
-    return "Projeto de lei nao encontrado.";
+    return "Projeto de lei não encontrado.";
   }
 
   return formatarProjeto(projeto);
+}
+
+const respostasProntas = [
+  {
+    intent: "ExplicarPEC",
+    termos: ["o que e uma pec", "o que e pec", "oque e pec", "pec significa"],
+    reply:
+      "PEC é uma Proposta de Emenda à Constituição. Ela serve para mudar algum ponto da Constituição Federal e precisa passar por um processo mais rígido que um projeto de lei comum.",
+  },
+  {
+    intent: "ExplicarProjetoLei",
+    termos: ["o que e projeto de lei", "o que e um projeto de lei", "projeto de lei"],
+    reply:
+      "Um projeto de lei é uma proposta para criar, alterar ou revogar uma lei. Ele precisa ser discutido, votado e aprovado pelo Legislativo antes de virar lei.",
+  },
+  {
+    intent: "ExplicarDeputado",
+    termos: ["o que um deputado faz", "o que faz um deputado", "funcao de um deputado", "para que serve um deputado"],
+    reply:
+      "Um deputado representa a população no Poder Legislativo. Ele propõe leis, vota projetos, fiscaliza o governo e participa de debates e comissões sobre temas públicos.",
+  },
+  {
+    intent: "ExplicarSenador",
+    termos: ["o que um senador faz", "o que faz um senador", "funcao de um senador", "para que serve um senador"],
+    reply:
+      "Um senador representa o estado no Senado Federal. Ele vota leis, analisa propostas que afetam o país, fiscaliza o governo e participa de decisões importantes, como sabatinas de autoridades.",
+  },
+  {
+    intent: "ExplicarChatbot",
+    termos: ["para que serve o chatbot", "o que o chatbot faz", "o que voce faz", "como voce ajuda", "chatbot serve para que"],
+    reply:
+      "Eu ajudo a consultar informações políticas de forma simples. Você pode perguntar sobre parlamentares, projetos de lei e conceitos básicos da política brasileira.",
+  },
+  {
+    intent: "ExplicarUso",
+    termos: ["como usar", "como eu uso", "o que posso perguntar", "exemplos de perguntas"],
+    reply:
+      "Você pode perguntar de forma direta. Exemplos: 'Quem é Erika Hilton?', 'Me fale sobre PL 2630/2020', 'O que é uma PEC?' ou 'O que faz um deputado?'.",
+  },
+];
+
+function buscarRespostaPronta(message) {
+  const texto = normalizarTexto(message);
+
+  return respostasProntas.find(({ termos }) =>
+    termos.some((termo) => texto.includes(termo))
+  );
 }
 
 function extrairProjetoLei(message) {
@@ -136,6 +183,15 @@ async function responderMensagem(message) {
     };
   }
 
+  const respostaPronta = buscarRespostaPronta(message);
+
+  if (respostaPronta) {
+    return {
+      intent: respostaPronta.intent,
+      reply: respostaPronta.reply,
+    };
+  }
+
   const nomePolitico = extrairNomePolitico(message);
 
   if (nomePolitico) {
@@ -148,7 +204,7 @@ async function responderMensagem(message) {
   return {
     intent: "Fallback",
     reply:
-      "Ainda nao entendi sua pergunta. Tente perguntar por um politico ou por um projeto, como PL 2630/2020.",
+      "Ainda não entendi sua pergunta. Tente perguntar por um político, por um projeto como PL 2630/2020 ou por conceitos como PEC e deputado.",
   };
 }
 
@@ -207,13 +263,13 @@ app.post("/webhook", async (req, res) => {
     }
 
     return res.json({
-      fulfillmentText: "Intent nao reconhecida.",
+      fulfillmentText: "Intent não reconhecida.",
     });
   } catch (error) {
     console.error(error);
 
     return res.json({
-      fulfillmentText: "Erro ao consultar dados politicos.",
+      fulfillmentText: "Erro ao consultar dados políticos.",
     });
   }
 });
