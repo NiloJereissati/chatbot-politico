@@ -63,8 +63,101 @@ function formatarProjeto(projeto) {
     partes.push("", `Data de apresentação: ${projeto.dataApresentacao}.`);
   }
 
+  const ultimaTramitacao = projeto.ultimasTramitacoes?.[0];
+
+  if (ultimaTramitacao) {
+    const data = formatarData(ultimaTramitacao.dataHora);
+    partes.push(
+      "",
+      `Última tramitação localizada: ${data ? `${data} - ` : ""}${ultimaTramitacao.descricao || "tramitação registrada"}.`
+    );
+  }
+
+  if (projeto.quantidadeVotacoes > 0) {
+    const textoVotacoes =
+      projeto.quantidadeVotacoes === 1
+        ? "1 votação associada"
+        : `${projeto.quantidadeVotacoes} votações associadas`;
+
+    partes.push(
+      "",
+      `Também encontrei ${textoVotacoes}. Para ver detalhes, pergunte: "Como foi a votação da ${projeto.tipo} ${projeto.numero}/${projeto.ano}?".`
+    );
+  }
+
   partes.push("", `Fonte: ${projeto.source.title}.`);
 
+  return partes.join("\n");
+}
+
+function formatarData(data) {
+  if (!data) return null;
+
+  const date = new Date(data);
+
+  if (Number.isNaN(date.getTime())) {
+    return data;
+  }
+
+  return date.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
+function formatarTramitacoesProjeto(projeto) {
+  const partes = [
+    `Encontrei ${projeto.tipo} ${projeto.numero}/${projeto.ano} na base oficial da Câmara dos Deputados.`,
+    "",
+  ];
+
+  if (!projeto.ultimasTramitacoes?.length) {
+    partes.push("Não encontrei registros recentes de tramitação para essa proposição nos dados consultados.");
+  } else {
+    partes.push("Últimas tramitações encontradas:");
+
+    projeto.ultimasTramitacoes.forEach((tramitacao, index) => {
+      const data = formatarData(tramitacao.dataHora);
+      const descricao = tramitacao.descricao || "tramitação registrada";
+      const orgao = tramitacao.orgao ? ` no órgão ${tramitacao.orgao}` : "";
+      const despacho = tramitacao.despacho ? ` Despacho: ${tramitacao.despacho}` : "";
+
+      partes.push(
+        `${index + 1}. ${data ? `${data}: ` : ""}${descricao}${orgao}.${despacho}`
+      );
+    });
+  }
+
+  partes.push("", `Fonte: ${projeto.source.title}.`);
+  return partes.join("\n");
+}
+
+function formatarVotacoesProjeto(projeto) {
+  const partes = [
+    `Encontrei ${projeto.tipo} ${projeto.numero}/${projeto.ano} na base oficial da Câmara dos Deputados.`,
+    "",
+  ];
+
+  if (!projeto.ultimasVotacoes?.length) {
+    partes.push("Não encontrei votações associadas a essa proposição nos dados consultados.");
+  } else {
+    partes.push("Votações mais recentes encontradas:");
+
+    projeto.ultimasVotacoes.forEach((votacao, index) => {
+      const data = formatarData(votacao.data);
+      const orgao = votacao.orgao ? ` - ${votacao.orgao}` : "";
+      const resultado = String(votacao.resultado || votacao.descricao || "resultado não informado")
+        .replace(/[.\s]+$/g, "");
+      const placar = [
+        votacao.placarSim != null ? `sim: ${votacao.placarSim}` : null,
+        votacao.placarNao != null ? `não: ${votacao.placarNao}` : null,
+        votacao.placarAbstencao != null ? `abstenção: ${votacao.placarAbstencao}` : null,
+      ].filter(Boolean);
+
+      partes.push(
+        `${index + 1}. ${data ? `${data}${orgao}: ` : ""}${resultado}${placar.length ? ` (${placar.join(", ")})` : ""}.`
+      );
+    });
+  }
+
+  partes.push("", `Fonte: ${projeto.source.title}.`);
   return partes.join("\n");
 }
 
@@ -148,6 +241,20 @@ async function consultarProjetoLei({ tipo = "PL", numero, ano }) {
 
 async function responderProjetoLei(projeto) {
   return (await consultarProjetoLei(projeto)).reply;
+}
+
+function detectarFocoProjeto(message) {
+  const texto = normalizarTexto(message);
+
+  if (/\b(votacao|votacoes|votou|votaram|aprovado|aprovacao|placar)\b/.test(texto)) {
+    return "votacoes";
+  }
+
+  if (/\b(tramitacao|tramitacoes|tramita|andamento|situacao|status)\b/.test(texto)) {
+    return "tramitacoes";
+  }
+
+  return "resumo";
 }
 
 const respostasProntas = [
@@ -276,7 +383,26 @@ async function responderMensagem(message) {
   const projeto = extrairProjetoLei(message);
 
   if (projeto) {
-    return consultarProjetoLei(projeto);
+    const response = await consultarProjetoLei(projeto);
+    const foco = detectarFocoProjeto(message);
+
+    if (response.dados && foco === "votacoes") {
+      return {
+        ...response,
+        intent: "BuscarVotacoesProjeto",
+        reply: formatarVotacoesProjeto(response.dados),
+      };
+    }
+
+    if (response.dados && foco === "tramitacoes") {
+      return {
+        ...response,
+        intent: "BuscarTramitacaoProjeto",
+        reply: formatarTramitacoesProjeto(response.dados),
+      };
+    }
+
+    return response;
   }
 
   const respostaPronta = buscarRespostaPronta(message);

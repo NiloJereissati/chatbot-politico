@@ -23,7 +23,7 @@ async function gerarRespostaComIA({ pergunta, intent, respostaBase, dados, fonte
     return null;
   }
 
-  const model = process.env.OPENAI_MODEL || "gpt-5.6-luna";
+  const model = process.env.OPENAI_MODEL || "gpt-5-mini";
 
   const response = await fetch(OPENAI_API_URL, {
     method: "POST",
