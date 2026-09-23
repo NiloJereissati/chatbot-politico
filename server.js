@@ -31,6 +31,10 @@ function normalizarTexto(texto) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\bvc\b/g, "voce")
+    .replace(/\bce\b/g, "voce")
+    .replace(/\btb\b/g, "tambem")
+    .replace(/\bpq\b/g, "porque")
     .trim();
 }
 
@@ -306,9 +310,23 @@ const respostasProntas = [
   },
   {
     intent: "ExplicarChatbot",
-    termos: ["para que serve o chatbot", "o que o chatbot faz", "o que voce faz", "como voce ajuda", "chatbot serve para que"],
+    termos: [
+      "para que serve o chatbot",
+      "o que o chatbot faz",
+      "o que voce faz",
+      "oq voce faz",
+      "o que vc faz",
+      "oq vc faz",
+      "quem e voce",
+      "quem e vc",
+      "como voce ajuda",
+      "como vc ajuda",
+      "chatbot serve para que",
+      "qual sua funcao",
+      "qual e sua funcao",
+    ],
     reply:
-      "Eu ajudo a consultar informações políticas de forma simples. Você pode perguntar sobre parlamentares, projetos de lei e conceitos básicos da política brasileira.",
+      "Eu sou um chatbot político. Posso ajudar você a entender conceitos como PEC e projeto de lei, consultar parlamentares e buscar informações oficiais sobre proposições, tramitações e votações.\n\nExemplos de perguntas:\n- O que é uma PEC?\n- Quem é Erika Hilton?\n- Me fale sobre PL 2630/2020\n- Qual a tramitação da PEC 45/2019?\n- Como foi a votação da PEC 45/2019?",
   },
   {
     intent: "ExplicarUso",
