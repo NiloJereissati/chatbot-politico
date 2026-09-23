@@ -4,6 +4,7 @@ const dotenv = require("dotenv");
 const { buscarDeputado, buscarProjetoLei } = require("./services/camara");
 const { buscarSenador } = require("./services/senado");
 const { gerarRespostaComIA } = require("./services/ai");
+const { buscarPerfilOficial } = require("./services/perfisOficiais");
 
 dotenv.config();
 
@@ -45,6 +46,21 @@ function formatarPolitico(politico) {
     `${politico.nome} é ${politico.tipo}, do partido ${politico.partido}, e representa ${politico.uf}.`,
     "",
     `Fonte: ${politico.source.title}.`,
+  ].join("\n");
+}
+
+function formatarPerfilOficial(perfil) {
+  return [
+    perfil.resumo,
+    "",
+    `Nome oficial: ${perfil.nome}.`,
+    `Nome popular: ${perfil.nomePopular}.`,
+    `Partido: ${perfil.partido}.`,
+    `Cargo: ${perfil.cargo}.`,
+    "",
+    perfil.observacao,
+    "",
+    `Fonte: ${perfil.source.title}.`,
   ].join("\n");
 }
 
@@ -206,6 +222,21 @@ async function consultarPolitico(nome) {
 
 async function responderPolitico(nome) {
   return (await consultarPolitico(nome)).reply;
+}
+
+function consultarPerfilOficial(nome) {
+  const perfil = buscarPerfilOficial(nome);
+
+  if (!perfil) {
+    return null;
+  }
+
+  return criarResposta({
+    intent: "BuscarPerfilOficial",
+    reply: formatarPerfilOficial(perfil),
+    dados: perfil,
+    sources: [perfil.source],
+  });
 }
 
 async function consultarProjetoLei({ tipo = "PL", numero, ano }) {
@@ -432,6 +463,12 @@ async function responderMensagem(message) {
   const nomePolitico = extrairNomePolitico(message);
 
   if (nomePolitico) {
+    const perfilOficial = consultarPerfilOficial(nomePolitico);
+
+    if (perfilOficial) {
+      return perfilOficial;
+    }
+
     return consultarPolitico(nomePolitico);
   }
 
