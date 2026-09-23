@@ -32,9 +32,14 @@ async function buscarSenador(nomeBusca) {
 
   return {
     tipo: "Senador",
+    id: dados.CodigoParlamentar,
     nome: dados.NomeParlamentar,
     partido: dados.SiglaPartidoParlamentar,
-    uf: dados.UfParlamentar
+    uf: dados.UfParlamentar,
+    source: {
+      title: "Dados Abertos do Senado Federal",
+      url: "https://legis.senado.leg.br/dadosabertos/senador/lista/atual.json"
+    }
   };
 }
 

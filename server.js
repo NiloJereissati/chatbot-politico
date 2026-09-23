@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 
 const { buscarDeputado, buscarProjetoLei } = require("./services/camara");
 const { buscarSenador } = require("./services/senado");
+const { gerarRespostaComIA } = require("./services/ai");
 
 dotenv.config();
 
@@ -34,16 +35,54 @@ function normalizarTexto(texto) {
 }
 
 function formatarPolitico(politico) {
-  return `${politico.nome} é ${politico.tipo}, do partido ${politico.partido}, e representa ${politico.uf}.`;
+  return [
+    `Encontrei ${politico.nome} em uma fonte oficial.`,
+    "",
+    `${politico.nome} é ${politico.tipo}, do partido ${politico.partido}, e representa ${politico.uf}.`,
+    "",
+    `Fonte: ${politico.source.title}.`,
+  ].join("\n");
 }
 
 function formatarProjeto(projeto) {
-  return `${projeto.tipo} ${projeto.numero}/${projeto.ano}: ${projeto.ementa}`;
+  const partes = [
+    `Encontrei ${projeto.tipo} ${projeto.numero}/${projeto.ano} na base oficial da Câmara dos Deputados.`,
+    "",
+    `Ementa: ${projeto.ementa}`,
+  ];
+
+  if (projeto.situacao) {
+    partes.push("", `Situação atual: ${projeto.situacao}.`);
+  }
+
+  if (projeto.autores?.length) {
+    partes.push("", `Autor(es): ${projeto.autores.join(", ")}.`);
+  }
+
+  if (projeto.dataApresentacao) {
+    partes.push("", `Data de apresentação: ${projeto.dataApresentacao}.`);
+  }
+
+  partes.push("", `Fonte: ${projeto.source.title}.`);
+
+  return partes.join("\n");
 }
 
-async function responderPolitico(nome) {
+function criarResposta({ intent, reply, dados = null, sources = [] }) {
+  return {
+    intent,
+    reply,
+    dados,
+    sources,
+  };
+}
+
+async function consultarPolitico(nome) {
   if (!nome) {
-    return "Informe o nome do político que você quer consultar.";
+    return criarResposta({
+      intent: "BuscarPolitico",
+      reply: "Informe o nome do político que você quer consultar.",
+    });
   }
 
   let politico = await buscarDeputado(nome);
@@ -53,49 +92,102 @@ async function responderPolitico(nome) {
   }
 
   if (!politico) {
-    return "Político não encontrado.";
+    return criarResposta({
+      intent: "BuscarPolitico",
+      reply:
+        "Não encontrei esse político nas listas atuais consultadas da Câmara ou do Senado. Tente informar o nome parlamentar completo.",
+    });
   }
 
-  return formatarPolitico(politico);
+  return criarResposta({
+    intent: "BuscarPolitico",
+    reply: formatarPolitico(politico),
+    dados: politico,
+    sources: [politico.source],
+  });
 }
 
-async function responderProjetoLei({ tipo = "PL", numero, ano }) {
+async function responderPolitico(nome) {
+  return (await consultarPolitico(nome)).reply;
+}
+
+async function consultarProjetoLei({ tipo = "PL", numero, ano }) {
   const numeroProjeto = Number(getFirst(numero));
   const anoProjeto = Number(getFirst(ano));
+  const tipoProjeto = String(tipo || "PL").toUpperCase();
 
   if (!numeroProjeto || !anoProjeto) {
-    return "Informe o tipo, número e ano do projeto. Exemplo: PL 2630/2020.";
+    return criarResposta({
+      intent: "BuscarProjetoLei",
+      reply:
+        "Para consultar uma proposta específica, informe o tipo, número e ano. Exemplo: PL 2630/2020 ou PEC 45/2019.",
+    });
   }
 
   const projeto = await buscarProjetoLei(
-    String(tipo || "PL").toUpperCase(),
+    tipoProjeto,
     numeroProjeto,
     anoProjeto
   );
 
   if (!projeto) {
-    return "Projeto de lei não encontrado.";
+    return criarResposta({
+      intent: "BuscarProjetoLei",
+      reply:
+        `Não encontrei ${tipoProjeto} ${numeroProjeto}/${anoProjeto} na base consultada da Câmara dos Deputados.`,
+    });
   }
 
-  return formatarProjeto(projeto);
+  return criarResposta({
+    intent: "BuscarProjetoLei",
+    reply: formatarProjeto(projeto),
+    dados: projeto,
+    sources: [projeto.source],
+  });
+}
+
+async function responderProjetoLei(projeto) {
+  return (await consultarProjetoLei(projeto)).reply;
 }
 
 const respostasProntas = [
   {
     intent: "ExplicarPEC",
-    termos: ["o que e uma pec", "o que e pec", "oque e pec", "pec significa"],
+    termos: [
+      "o que e uma pec",
+      "o que e pec",
+      "oque e pec",
+      "pec significa",
+      "me fale sobre uma pec",
+      "fale sobre uma pec",
+      "me fale sobre pec",
+      "explique pec",
+    ],
     reply:
-      "PEC é uma Proposta de Emenda à Constituição. Ela serve para mudar algum ponto da Constituição Federal e precisa passar por um processo mais rígido que um projeto de lei comum.",
+      "Uma PEC é uma Proposta de Emenda à Constituição. Ela serve para alterar algum ponto da Constituição Federal. Diferente de um projeto de lei comum, uma PEC tem uma tramitação mais rígida e precisa de apoio maior no Congresso. Se quiser consultar uma proposta específica, pergunte algo como: 'Me fale sobre a PEC 45/2019'.",
   },
   {
     intent: "ExplicarProjetoLei",
-    termos: ["o que e projeto de lei", "o que e um projeto de lei", "projeto de lei"],
+    termos: [
+      "o que e projeto de lei",
+      "o que e um projeto de lei",
+      "projeto de lei",
+      "me fale sobre um projeto de lei",
+      "fale sobre projeto de lei",
+    ],
     reply:
-      "Um projeto de lei é uma proposta para criar, alterar ou revogar uma lei. Ele precisa ser discutido, votado e aprovado pelo Legislativo antes de virar lei.",
+      "Um projeto de lei é uma proposta para criar, alterar ou revogar uma lei. Ele precisa ser discutido e votado pelo Poder Legislativo. Se for aprovado nas etapas necessárias e sancionado quando couber, pode virar lei. Para consultar um projeto específico, use tipo, número e ano, como: PL 2630/2020.",
   },
   {
     intent: "ExplicarDeputado",
-    termos: ["o que um deputado faz", "o que faz um deputado", "funcao de um deputado", "para que serve um deputado"],
+    termos: [
+      "o que um deputado faz",
+      "o que faz um deputado",
+      "funcao de um deputado",
+      "para que serve um deputado",
+      "me fale sobre deputado",
+      "fale sobre deputado",
+    ],
     reply:
       "Um deputado representa a população no Poder Legislativo. Ele propõe leis, vota projetos, fiscaliza o governo e participa de debates e comissões sobre temas públicos.",
   },
@@ -125,6 +217,13 @@ function buscarRespostaPronta(message) {
   return respostasProntas.find(({ termos }) =>
     termos.some((termo) => texto.includes(termo))
   );
+}
+
+function respostaProntaParaResponse(respostaPronta) {
+  return criarResposta({
+    intent: respostaPronta.intent,
+    reply: respostaPronta.reply,
+  });
 }
 
 function extrairProjetoLei(message) {
@@ -177,35 +276,26 @@ async function responderMensagem(message) {
   const projeto = extrairProjetoLei(message);
 
   if (projeto) {
-    return {
-      intent: "BuscarProjetoLei",
-      reply: await responderProjetoLei(projeto),
-    };
+    return consultarProjetoLei(projeto);
   }
 
   const respostaPronta = buscarRespostaPronta(message);
 
   if (respostaPronta) {
-    return {
-      intent: respostaPronta.intent,
-      reply: respostaPronta.reply,
-    };
+    return respostaProntaParaResponse(respostaPronta);
   }
 
   const nomePolitico = extrairNomePolitico(message);
 
   if (nomePolitico) {
-    return {
-      intent: "BuscarPolitico",
-      reply: await responderPolitico(nomePolitico),
-    };
+    return consultarPolitico(nomePolitico);
   }
 
-  return {
+  return criarResposta({
     intent: "Fallback",
     reply:
-      "Ainda não entendi sua pergunta. Tente perguntar por um político, por um projeto como PL 2630/2020 ou por conceitos como PEC e deputado.",
-  };
+      "Ainda não entendi totalmente sua pergunta. Posso ajudar com conceitos políticos, parlamentares e projetos. Tente, por exemplo: 'O que é uma PEC?', 'Quem é Erika Hilton?' ou 'Me fale sobre PL 2630/2020'.",
+  });
 }
 
 app.get("/", (req, res) => {
@@ -227,10 +317,31 @@ app.post("/chat", async (req, res) => {
 
   try {
     const response = await responderMensagem(message);
+    let reply = response.reply;
+    let mode = "template";
+
+    try {
+      const aiReply = await gerarRespostaComIA({
+        pergunta: message,
+        intent: response.intent,
+        respostaBase: response.reply,
+        dados: response.dados,
+        fontes: response.sources,
+      });
+
+      if (aiReply) {
+        reply = aiReply;
+        mode = "ai";
+      }
+    } catch (error) {
+      console.warn("IA indisponível, usando resposta base.", error.message);
+    }
 
     return res.json({
-      reply: response.reply,
+      reply,
       intent: response.intent,
+      sources: response.sources,
+      mode,
     });
   } catch (error) {
     console.error(error);
