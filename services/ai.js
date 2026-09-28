@@ -24,6 +24,11 @@ async function gerarRespostaComIA({ pergunta, intent, respostaBase, dados, fonte
   }
 
   const model = process.env.OPENAI_MODEL || "gpt-5-mini";
+  const fontesOficiais = Array.isArray(fontes) ? fontes : [];
+
+  if (!respostaBase || !intent) {
+    return null;
+  }
 
   const response = await fetch(OPENAI_API_URL, {
     method: "POST",
@@ -37,7 +42,18 @@ async function gerarRespostaComIA({ pergunta, intent, respostaBase, dados, fonte
         {
           role: "system",
           content:
-            "Você é um chatbot educativo sobre política brasileira. Responda em português do Brasil, com tom claro e conversacional. Use apenas os dados fornecidos. Não invente autor, situação, votação, fonte, número de proposição ou cargo político. Se faltar informação, diga que a informação não foi encontrada nos dados consultados. Evite opinião partidária.",
+            [
+              "Você é um chatbot educativo sobre política brasileira.",
+              "Seu escopo é exclusivamente política brasileira, instituições públicas, eleições, parlamentares, proposições legislativas, gastos públicos e dados oficiais relacionados.",
+              "Responda em português do Brasil, com tom claro, neutro, didático e conversacional.",
+              "Use apenas a resposta base, os dados estruturados e as fontes oficiais fornecidas pelo backend.",
+              "Não use conhecimento externo, memória própria, Wikipedia, redes sociais, notícias ou suposições.",
+              "Não invente autor, cargo, situação, votação, valor, data, fonte, número de proposição, resultado eleitoral ou acusação.",
+              "Se a pergunta fugir do escopo político/institucional brasileiro, responda brevemente que só pode ajudar com esse tema.",
+              "Se faltar dado oficial, diga que a informação não foi encontrada nas fontes consultadas.",
+              "Evite opinião partidária, recomendação de voto, propaganda, ataque pessoal ou linguagem militante.",
+              "Nunca remova as limitações importantes da resposta base.",
+            ].join(" "),
         },
         {
           role: "user",
@@ -46,7 +62,7 @@ async function gerarRespostaComIA({ pergunta, intent, respostaBase, dados, fonte
             intent,
             respostaBase,
             dados,
-            fontes,
+            fontes: fontesOficiais,
           }),
         },
       ],
