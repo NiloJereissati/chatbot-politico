@@ -16,6 +16,15 @@ const setup = (overrides = {}, options = {}) => {
   });
   return { ...client, events, calls };
 };
+
+test("biografia pública revisada pode ser gerada, mas perfil bruto continua bloqueado", async () => {
+  const client = setup();
+  const biography = { ...input, intent: "BuscarPerfilOficial", dados: { tipo: "base_educativa_revisada", categoria: "biografia_institucional", resumo: "Marco institucional revisado" } };
+  assert.equal(await client.generate(biography), "Resposta simulada apenas para testes.");
+  assert.equal(await client.generate({ ...biography, dados: { nome: "Registro pessoal de API" } }), null);
+  assert.equal(client.calls.length, 1);
+  assert.equal(client.events.at(-1).reason, "educational_only");
+});
 test("Gemini nativo simulado usa apenas o modelo Free aprovado, contexto e limites", async () => {
   const client = setup();
   assert.equal(await client.generate(input), "Resposta simulada apenas para testes.");

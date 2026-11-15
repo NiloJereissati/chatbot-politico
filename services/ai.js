@@ -2,8 +2,8 @@
 const GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const OFFICIAL_HOSTS = new Set([
-  "www12.senado.leg.br", "www25.senado.leg.br", "legis.senado.leg.br",
-  "www.camara.leg.br", "dadosabertos.camara.leg.br", "www.gov.br", "gov.br",
+  "www12.senado.leg.br", "www25.senado.leg.br", "legis.senado.leg.br", "adm.senado.leg.br",
+  "www.camara.leg.br", "www2.camara.leg.br", "dadosabertos.camara.leg.br", "www.gov.br", "gov.br", "www.tse.jus.br",
   "dadosabertos.tse.jus.br", "servicodados.ibge.gov.br", "portaldatransparencia.gov.br",
 ]);
 function officialSource(source) {
@@ -37,8 +37,9 @@ function createAiClient({ env = process.env, fetchImpl = (...args) => fetch(...a
     if (!timeout || !outputLimit || !dailyLimit || model !== GEMINI_MODEL) return record("invalid_configuration");
     if (!intent || !respostaBase || !dados || !Array.isArray(fontes) || !fontes.length || !fontes.every(officialSource)) return record("insufficient_grounding");
     // Free-tier processing may be used for product improvement: do not forward
-    // personal records from TSE, parliamentarian profiles or other API queries.
-    if (intent !== "ExplicarInstituicoes" || dados.tipo !== "base_educativa_revisada") return record("educational_only");
+    // personal API records. Public historical summaries are reviewed separately.
+    const reviewedBiography = intent === "BuscarPerfilOficial" && dados.categoria === "biografia_institucional";
+    if ((!reviewedBiography && intent !== "ExplicarInstituicoes") || dados.tipo !== "base_educativa_revisada") return record("educational_only");
     if (typeof pergunta !== "string" || pergunta.length > 2000) return record("input_limit");
     if (/[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/i.test(pergunta)) return record("personal_data_detected");
     const context = JSON.stringify({ intent, respostaBase, dados, fontes });

@@ -1,5 +1,54 @@
 # IA educativa com Gemini gratuito — configuração do Render
 
+## Ampliação da compreensão — 14/11/2026
+
+O roteamento anterior só extraía nomes em construções como `Quem é ...`.
+`Me diz quem é o Lula` não extraía uma entidade e caía no fallback, antes de
+qualquer chamada ao Gemini. O perfil de Lula já existente também não era
+elegível para geração. O problema não demonstrava falha do provedor.
+
+`services/politicalLanguage.js` normaliza acentos, caixa, espaços e introduções
+conversacionais, extrai nomes completos e aplica o limite de escopo sem usar IA
+para classificação. Não faz correspondência parcial de aliases: Lula da Fonte
+não vira Luiz Inácio Lula da Silva. O cadastro em `perfisOficiais.js` admite
+outros perfis revisados pelo mesmo formato, sem uma resposta especial no router.
+Lula e Jair Bolsonaro têm resumos institucionais históricos, fontes próprias e
+data de revisão. Esses resumos públicos podem chegar ao Gemini; registros
+pessoais brutos das APIs continuam fora do provedor Free.
+
+A base educativa cobre também poderes, Constituição, democracia, partidos e
+esquerda/direita, além de PEC, leis e Congresso. Cada tópico seleciona suas
+próprias fontes verificadas. Não classifica partidos ou pessoas por ideologia.
+Consultas com tipo/número/ano continuam primeiro nas APIs oficiais, incluindo
+votações. Não foi criada seção nem integração nova de Projetos de Lei.
+
+Biografias não cobrem todas as figuras políticas: nomes sem perfil revisado
+seguem para a consulta parlamentar existente; sem informação suficiente, não
+se gera texto nem se anexa uma fonte genérica como prova. Informações atuais
+de filiação, ocupação de cargo e situação judicial não são inferidas dos
+resumos históricos. Esta melhoria não corrige a abrangência/paginação das
+integrações parlamentares legadas nem transforma o serviço em busca universal.
+Fora do escopo, propaganda e instruções identificadas recebem orientação sem
+consumir Gemini. Os filtros não são garantia completa contra prompt injection.
+
+As fontes adicionais são a Constituição atualizada na Câmara, a explicação do
+TSE sobre partido/federação/coligação, o Vocabulário Controlado do Senado e as
+referências históricas da Agência Senado, Câmara e MRE listadas diretamente
+nos registros. Sínteses são paráfrases, sem notas ou avaliações próprias.
+
+Não há mudanças de variáveis, modelo, quotas, faturamento ou chave. O frontend
+continua recebendo `{ reply, intent, sources, mode }`. A correção de formatação
+é separada: texto Markdown básico é exibido com elementos React, sem executar
+HTML ou transformar URLs geradas em links; fontes mantêm validação própria.
+
+Validação local desta ampliação: `npm ci --ignore-scripts --no-audit --no-fund`,
+17 arquivos válidos em `npm run check`, 112 testes em `npm test` (zero falhas)
+e auditorias completa/produção com zero vulnerabilidades reportadas. Gemini,
+quota e APIs são simulados nos testes. Uma sondagem real anterior à publicação
+reproduziu o fallback para `Me diz quem é o Lula.` sem geração. O resultado
+remoto de CI/deploy e eventuais respostas reais posteriores são informados no
+relatório da tarefa, sem confundi-los com esta validação local.
+
 Esta revisão adapta a implementação existente ao Gemini gratuito. Merge na
 `main` foi autorizado; o proprietário confirmou Render → `main` → Auto-Deploy
 a cada commit. O merge pode iniciar uma publicação. Ativação e teste com chave

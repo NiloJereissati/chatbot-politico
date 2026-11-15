@@ -4,7 +4,8 @@ const dotenv = require("dotenv");
 const { buscarDeputado, buscarProjetoLei } = require("./services/camara");
 const { buscarSenador } = require("./services/senado");
 const { gerarRespostaComIA } = require("./services/ai");
-const { educationalResponse } = require("./services/education");
+const { educationalResponse, REVIEWED_AT } = require("./services/education");
+const { blockedRequest, extractPoliticalName, politicalSubject } = require("./services/politicalLanguage");
 const { buscarPerfilOficial } = require("./services/perfisOficiais");
 const {
   DEFAULT_TSE_YEAR,
@@ -75,10 +76,6 @@ function formatarPerfilOficial(perfil) {
     "",
     `Nome oficial: ${perfil.nome}.`,
     `Nome popular: ${perfil.nomePopular}.`,
-    `Partido: ${perfil.partido}.`,
-    `Cargo: ${perfil.cargo}.`,
-    "",
-    perfil.observacao,
     "",
     `Fonte: ${perfil.source.title}.`,
   ].join("\n");
@@ -412,11 +409,13 @@ function consultarPerfilOficial(nome) {
     return null;
   }
 
+  const limitacoes = `Perfil institucional histórico revisado em ${REVIEWED_AT}. ${perfil.observacao}`;
   return criarResposta({
     intent: "BuscarPerfilOficial",
-    reply: formatarPerfilOficial(perfil),
-    dados: perfil,
-    sources: [perfil.source],
+    reply: `${formatarPerfilOficial(perfil)}\n\n${limitacoes}`,
+    // Only the reviewed public summary is sent, never a live personal record.
+    dados: { tipo: "base_educativa_revisada", categoria: "biografia_institucional", revisadoEm: REVIEWED_AT, nome: perfil.nome, resumo: perfil.resumo, limitacoes },
+    sources: [perfil.source, ...(perfil.additionalSources || [])],
   });
 }
 
@@ -951,27 +950,11 @@ function extrairConsultaTransparencia(message) {
 }
 
 function extrairNomePolitico(message) {
-  const texto = normalizarTexto(message).replace(/[?!.,;:]+$/g, "");
-  const patterns = [
-    /^quem\s+e\s+(.+)$/,
-    /^dados\s+(?:sobre|de)\s+(.+)$/,
-    /^informacoes\s+sobre\s+(.+)$/,
-    /^me\s+fale\s+sobre\s+(.+)$/,
-    /^fale\s+sobre\s+(.+)$/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = texto.match(pattern);
-
-    if (match) {
-      return match[1].trim();
-    }
-  }
-
-  return null;
+  return extractPoliticalName(message);
 }
 
 async function responderMensagem(message) {
+  if (blockedRequest(message)) return criarResposta({ intent: "ForaDoEscopo", reply: "Meu foco é educação sobre política brasileira com fontes verificáveis. Não faço propaganda, recomendações de voto ou rankings de políticos. Posso explicar instituições e conceitos ou consultar informações oficiais." });
   const projeto = extrairProjetoLei(message);
 
   if (projeto) {
@@ -1036,10 +1019,15 @@ async function responderMensagem(message) {
     return consultarPolitico(nomePolitico);
   }
 
+  if (politicalSubject(message)) return criarResposta({
+    intent: "PoliticaSemContexto",
+    reply: "Entendi que a pergunta é sobre política brasileira, mas não tenho contexto oficial suficiente para responder com segurança a esse pedido. Para informações atuais ou sobre uma pessoa, informe o nome completo; para uma proposição, informe tipo, número e ano. Posso explicar conceitos, poderes da República e processo legislativo. Não vou preencher essa lacuna com uma resposta gerada sem fonte.",
+  });
+
   return criarResposta({
     intent: "Fallback",
     reply:
-      "Ainda não entendi totalmente sua pergunta. Posso ajudar com conceitos políticos, parlamentares e projetos. Tente, por exemplo: 'O que é uma PEC?', 'Quem é Erika Hilton?' ou 'Me fale sobre PL 2630/2020'.",
+      "Meu foco é a política brasileira. Não encontrei contexto suficiente para esta pergunta. Você pode perguntar naturalmente sobre instituições, conceitos e trajetórias políticas, ou informar uma proposição como PL 2630/2020.",
   });
 }
 
