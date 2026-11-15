@@ -4,6 +4,7 @@ const dotenv = require("dotenv");
 const { buscarDeputado, buscarProjetoLei } = require("./services/camara");
 const { buscarSenador } = require("./services/senado");
 const { gerarRespostaComIA } = require("./services/ai");
+const { educationalResponse } = require("./services/education");
 const { buscarPerfilOficial } = require("./services/perfisOficiais");
 const {
   DEFAULT_TSE_YEAR,
@@ -22,7 +23,10 @@ const {
   consultarLicitacoes,
 } = require("./services/transparencia");
 
-dotenv.config();
+// Never load the tracked legacy .env. Local development is explicit.
+if (process.env.NODE_ENV === "development") {
+  dotenv.config({ path: require("node:path").join(__dirname, ".env.local") });
+}
 
 const app = express();
 
@@ -995,6 +999,9 @@ async function responderMensagem(message) {
 
   const respostaPronta = buscarRespostaPronta(message);
 
+  const educational = educationalResponse(message);
+  if (educational) return educational;
+
   if (respostaPronta) {
     return respostaProntaParaResponse(respostaPronta);
   }
@@ -1037,10 +1044,6 @@ async function responderMensagem(message) {
 }
 
 function deveUsarIAControlada(response) {
-  if (process.env.AI_ENABLED === "false") {
-    return false;
-  }
-
   if (!response?.dados || !response?.sources?.length) {
     return false;
   }
@@ -1061,6 +1064,7 @@ app.get("/health", (req, res) => {
 });
 
 app.post("/chat", async (req, res) => {
+  if (typeof req.body?.message !== "string") return res.status(400).json({ error: "message must be a string" });
   const message = String(req.body?.message || "").trim();
 
   if (!message) {
@@ -1069,6 +1073,7 @@ app.post("/chat", async (req, res) => {
     });
   }
 
+  if (message.length > 2000) return res.status(413).json({ error: "message exceeds 2000 characters" });
   try {
     const response = await responderMensagem(message);
     let reply = response.reply;
@@ -1086,10 +1091,13 @@ app.post("/chat", async (req, res) => {
 
         if (aiReply) {
           reply = aiReply;
+          if (response.dados?.tipo === "base_educativa_revisada" && !reply.includes(response.dados.limitacoes)) {
+            reply += `\n\n${response.dados.limitacoes}`;
+          }
           mode = "ai";
         }
       } catch (error) {
-        console.warn("IA indisponível, usando resposta base.", error.message);
+        console.warn(JSON.stringify({ event: "ai_result", reason: "unexpected_error" }));
       }
     }
 
@@ -1100,7 +1108,7 @@ app.post("/chat", async (req, res) => {
       mode,
     });
   } catch (error) {
-    console.error(error);
+    console.error(JSON.stringify({ event: "chat_error", reason: "official_lookup_failed" }));
 
     return res.status(500).json({
       error: "Erro ao consultar dados politicos.",
@@ -1133,7 +1141,7 @@ app.post("/webhook", async (req, res) => {
       fulfillmentText: "Intent não reconhecida.",
     });
   } catch (error) {
-    console.error(error);
+    console.error(JSON.stringify({ event: "webhook_error", reason: "official_lookup_failed" }));
 
     return res.json({
       fulfillmentText: "Erro ao consultar dados políticos.",
@@ -1143,6 +1151,10 @@ app.post("/webhook", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
+    console.info(JSON.stringify({ event: "ai_configuration", provider: "gemini", enabled: process.env.AI_ENABLED === "true", freeTierConfirmed: process.env.GEMINI_FREE_TIER_CONFIRMED === "true", environmentSource: "process.env; development may use .env.local" }));
+  });
+}
+module.exports = { app, responderMensagem, deveUsarIAControlada };
