@@ -1,10 +1,13 @@
-# IA educativa — preparação para revisão no Render
+# IA educativa com Gemini gratuito — configuração do Render
 
-Estado: branch para revisão, sem merge, deploy, configuração de cobrança ou
-teste com chave real. O contrato `/chat` continua `{ message }` →
+Esta revisão adapta a implementação existente ao Gemini gratuito. Merge na
+`main` foi autorizado; o proprietário confirmou Render → `main` → Auto-Deploy
+a cada commit. O merge pode iniciar uma publicação. Ativação e teste com chave
+real ainda dependem da configuração privada e de autorização específica.
+Não foi ativada cobrança nem usada chave real. O contrato `/chat` continua `{ message }` →
 `{ reply, intent, sources, mode }`. Node 22.18 ou superior.
 
-## Diagnóstico do código anterior
+## Diagnóstico do código anterior (histórico OpenAI)
 
 - `dotenv.config()` carregava `.env` automaticamente. Esse arquivo já está
   rastreado no repositório público. Environment vazio no Render **não comprova**
@@ -13,13 +16,30 @@ teste com chave real. O contrato `/chat` continua `{ message }` →
 - `deveUsarIAControlada` exigia dados e fontes. Templates educativos não tinham
   esses campos; `Fallback` também era excluído. Ativar uma chave não resolvia as
   perguntas abertas. O casamento amplo de “projeto de lei” interceptava comparações.
-- A OpenAI já era chamada por `/v1/responses`. Sem chave, retornava `null`;
+- A implementação anterior chamava a OpenAI por `/v1/responses`. Sem chave, retornava `null`;
   `AI_ENABLED=false` desativava a etapa. Erros eram capturados, mantendo template.
   Não havia timeout explícito ou orçamento de requisições.
 - O estado das variáveis privadas e o commit implantado não foram consultados.
   Não se concluiu que a chave está ausente só pela resposta `template`.
 
-## Alterações propostas
+## Integração definitiva desta revisão
+
+- Provedor único: API REST oficial do Gemini, via `generateContent`, sem SDK.
+  Não usa compatibilidade OpenAI nem envia payload da Responses API.
+- Modelo permitido: **`gemini-3.5-flash-lite`**, estável, entrada e saída
+  gratuitas na modalidade Standard da faixa Free segundo a tabela oficial
+  consultada em 14/11/2026. Não há troca automática de modelo ou provedor.
+  `GEMINI_MODEL` com outro identificador bloqueia a geração, inclusive modelos
+  pagos ou aliases legados. O 2.5 Flash-Lite não foi escolhido porque há
+  restrições para projetos novos na documentação atual.
+- Endpoint fixo:
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent`.
+  Chave somente no header `x-goog-api-key`, nunca na URL. Corpo com
+  `systemInstruction`, `contents` e `generationConfig.maxOutputTokens`.
+  Somente candidato único com `finishReason: STOP` e texto não vazio é aceito.
+  Bloqueios de segurança, respostas parciais e partes de raciocínio não são
+  apresentados como resposta gerada. Não habilita tools, busca paga, caching,
+  batch, flex ou prioridade. Mantém o raciocínio mínimo padrão do modelo.
 
 - Perguntas educativas abertas sobre PEC, elaboração de leis e Câmara/Senado
   recebem contexto institucional revisado, fontes e uma síntese de base. A
@@ -28,9 +48,16 @@ teste com chave real. O contrato `/chat` continua `{ message }` →
 - Consultas específicas a proposições mantêm prioridade. Perguntas sobre dados
   atuais, candidatos, localidades e outras integrações não usam a base educativa.
   Os serviços Câmara, Senado, TSE, IBGE e Transparência não foram modificados.
-- IA é opt-in: somente `AI_ENABLED=true`, com chave configurada, pode gerar.
+- IA é opt-in: exige `AI_ENABLED=true`, `GEMINI_FREE_TIER_CONFIRMED=true` e
+  `GEMINI_API_KEY` configurada para gerar. A confirmação Free é declaração do
+  operador após conferir a conta, não auditoria automática do faturamento.
   Ausência, falha, saída incompleta, contexto excessivo ou orçamento esgotado
   preservam a resposta de base e suas fontes, com `mode: template`.
+- Apenas `ExplicarInstituicoes` com contexto `base_educativa_revisada` é enviado
+  ao Gemini. Resultados individuais de parlamentares, TSE e demais APIs
+  permanecem em resposta de base: não enviamos esses registros pessoais ao
+  provedor na faixa gratuita. Email/CPF identificáveis na pergunta também
+  bloqueiam o envio; isso não equivale a anonimização completa de texto livre.
 - `mode: ai` só acompanha texto completo retornado pelo provedor. Fontes vêm do
   backend. Links gerados fora da lista fornecida são recusados. A revisão e as
   limitações do material educativo são anexadas mesmo se o modelo as omitir.
@@ -51,7 +78,7 @@ teste com chave real. O contrato `/chat` continua `{ message }` →
 
 ## Configurações exatas que Nilo deverá conferir
 
-Somente após revisão e autorização separada para ativação/deploy. **Não inserir
+Somente após conferência de gratuidade e autorização para ativação. **Não inserir
 chaves no GitHub, no frontend ou em mensagens.** Preencher no painel privado do
 serviço backend no Render, não no GitHub Pages.
 
@@ -61,9 +88,10 @@ serviço backend no Render, não no GitHub Pages.
 | Build command | `npm ci --ignore-scripts --no-audit --no-fund` |
 | Start command | `npm start` |
 | `NODE_ENV` | `production` |
-| `AI_ENABLED` | `false` durante revisão; `true` apenas quando Nilo autorizar a geração e o uso da conta. |
-| `OPENAI_API_KEY` | Chave privada válida de um projeto autorizado, com acesso e quota; cadastrar somente no Render. Não usar automaticamente qualquer chave do `.env` público. |
-| `OPENAI_MODEL` | Identificador de modelo compatível com Responses e autorizado na conta. O padrão legado é `gpt-5-mini`; conferir disponibilidade, depreciação e preço antes de ativar. Não houve seleção/contratação automática de outro modelo. |
+| `AI_ENABLED` | `false` por padrão; `true` somente quando a ativação estiver autorizada. |
+| `GEMINI_FREE_TIER_CONFIRMED` | `false` por padrão; Nilo define `true` somente depois de verificar projeto Free, sem conta de faturamento vinculada e com quota para o modelo. |
+| `GEMINI_API_KEY` | Chave privada criada no Google AI Studio para esse projeto Free; somente no Render. Não enviar por mensagens nem cadastrar no frontend. |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` (padrão e único identificador aceito). Se não houver acesso gratuito na conta, não substituir por modelo pago. |
 | `ALLOWED_ORIGIN` | `https://elias226.github.io` (a origem não inclui `/chat-dashboard-hub/`). Sem configuração mantém `*`, como antes. |
 | `AI_TIMEOUT_MS` | Opcional, padrão `20000`; inteiro de `1000` a `45000`, inclui leitura do corpo. |
 | `AI_MAX_OUTPUT_TOKENS` | Opcional, padrão `800`; inteiro de `128` a `1500`. Inclui raciocínio e texto. |
@@ -74,6 +102,33 @@ As credenciais do Portal da Transparência são independentes e permanecem com
 seus nomes existentes (`PORTAL_TRANSPARENCIA_API_KEY` ou `TRANSPARENCIA_API_KEY`).
 Não são necessárias para perguntas educativas. Nenhuma credencial real foi usada
 nos testes. O frontend já entende `mode: ai` e `mode: template` sem alteração.
+As variáveis `OPENAI_*` não são lidas pela integração e não ativam fallback.
+
+## Procedimento privado para Nilo
+
+1. Abrir [Google AI Studio → API keys](https://aistudio.google.com/apikey) na
+   própria conta e aceitar os termos somente após lê-los. Criar ou selecionar
+   um projeto **Free** sem faturamento vinculado. Não clicar em Set up billing,
+   Upgrade, adicionar cartão ou habilitar trial pago.
+2. Criar uma chave para esse projeto. A documentação atual usa auth keys por
+   padrão, restritas à Gemini API. Conferir associação ao projeto e não usar
+   chave de projeto pago. Não reutilizar chaves potencialmente expostas.
+3. Na área de [limites ativos](https://aistudio.google.com/rate-limit), conferir
+   acesso a `gemini-3.5-flash-lite` e quotas de RPM, TPM e RPD. Os limites variam
+   por projeto/modelo/região; não há número gratuito universal garantido. Se o
+   projeto precisar de verificação gratuita, concluir só essa verificação.
+   Se não houver acesso ou a interface exigir cobrança, parar e manter IA off.
+4. Cadastrar privadamente no Render as variáveis da tabela, inicialmente com
+   `AI_ENABLED=false`. Manter o serviço na branch `main`. Não modificar o `.env`
+   público. Outras credenciais necessárias devem ficar no Environment do Render.
+5. Somente depois da conferência e da autorização específica de teste, definir
+   `GEMINI_FREE_TIER_CONFIRMED=true` e `AI_ENABLED=true`, salvar/reimplantar.
+6. Fazer poucas perguntas educativas e conferir resposta, fontes, data de
+   revisão, `mode: ai` e evento sanitizado `generated` no serviço. Conferir o uso
+   no projeto Free. HTTP 200 ou teste simulado não comprovam geração real.
+7. Para desativar rapidamente, definir `AI_ENABLED=false` no Render e
+   salvar/reimplantar. Também retirar a confirmação Free se houver mudança na
+   conta. A aplicação continua respondendo com a base e as APIs oficiais.
 
 ## Limites e custos
 
@@ -86,29 +141,42 @@ saída acima. Não há retry automático de geração; nenhum erro amplia o orç
 Render e múltiplas instâncias reiniciam/multiplicam a contagem. Nilo deve conferir
 as quotas da conta do provedor; alertas de orçamento podem não interromper gastos.
 Um timeout local também não garante que o provedor deixe de processar a chamada.
+O contador local diário usa UTC; o Google reinicia RPD à meia-noite do Pacífico
+e compartilha quotas entre chaves do mesmo projeto. Esses limites não são iguais.
 
-A [OpenAI tarifa a API](https://developers.openai.com/api/docs/pricing); o modelo
-legado [gpt-5-mini não tem faixa Free](https://developers.openai.com/api/docs/models/gpt-5-mini).
-Não ativar faturamento nem usar chave real sem autorização específica. Créditos
-já autorizados são uma opção. Se for exigido custo zero, avaliar separadamente
-um adaptador para [camada gratuita da Gemini API](https://aistudio.google.com/docs/pricing),
-com quotas e termos próprios (incluindo tratamento de dados). Esse adaptador não
-foi implementado. Outra opção é manter IA desligada e usar a base educativa,
-identificada como `template`, até haver um provedor autorizado.
+Evidências oficiais: [preços do modelo](https://aistudio.google.com/docs/pricing#gemini-3.5-flash-lite),
+[modelo](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite),
+[REST generateContent](https://aistudio.google.com/api-reference/generate-content),
+[quotas](https://aistudio.google.com/docs/rate-limits),
+[chaves](https://aistudio.google.com/docs/api-key) e
+[faturamento e tiers](https://aistudio.google.com/docs/billing).
+
+O mesmo modelo também possui preços pagos. Não existe neste endpoint uma flag
+de requisição que prove que uma chave pertence a projeto Free. O backend não
+consulta Billing nem administra a conta Google. A confirmação do operador
+**não garante gratuidade se ele usar uma chave paga ou habilitar cobrança depois**.
+Não existe fallback pago; erro de quota/acesso volta à base, sem retry e sem
+upgrade. No Free, dados enviados podem ser utilizados para melhoria dos
+produtos Google; por isso restringimos o envio ao contexto educativo, sem
+histórico nem registros pessoais das APIs. Nunca enviar dados pessoais sensíveis.
 
 ## Logs para diagnóstico
 
 Cada tentativa elegível registra `event: ai_result` e uma categoria:
 
-- `disabled`, `missing_key`, `invalid_configuration`: conferir configuração.
-- `invalid_key`, `model_unavailable`, `quota_unavailable`, `provider_rate_limit`,
-  `invalid_provider_configuration`: códigos conhecidos retornados pelo provedor.
+- `disabled`, `free_tier_not_confirmed`, `missing_key`, `invalid_configuration`:
+  conferir configuração e conta Free antes de ativar.
+- `invalid_key`, `model_unavailable`, `free_tier_or_project_unavailable`,
+  `provider_rate_limit`, `provider_access_denied`, `provider_unavailable`,
+  `invalid_provider_configuration`: códigos conhecidos retornados pelo Gemini.
 - `provider_http_error` + `status`: falha HTTP sem código reconhecido.
 - `timeout`, `provider_network_or_parse_error`: conexão/corpo/resposta inválida.
-- `incomplete_output`, `empty_or_oversized_output`, `untrusted_output_link`:
+- `incomplete_output`, `safety_blocked`, `safety_or_finish_blocked`,
+  `invalid_provider_response`, `empty_or_oversized_output`, `untrusted_output_link`:
   geração recusada, preservando a resposta de base.
 - `input_limit`, `context_limit`, `insufficient_grounding`, `busy`, `minute_limit`,
-  `daily_limit`: bloqueio local, sem nova chamada ao provedor.
+  `daily_limit`, `educational_only`, `personal_data_detected`: bloqueio local,
+  sem nova chamada ao provedor.
 - `generated`: texto completo aceito; o endpoint retorna `mode: ai`.
 
 Não enviar logs privados integrais contendo dados de outras integrações ou
@@ -137,12 +205,13 @@ APIs simuladas; **não comprovam geração real**. CI da branch/PR usa apenas es
 simulações, sem secrets ou deploy. Checkout parcial exclui `.env` e os
 `node_modules` versionados; o lockfile reconstrói as dependências.
 
-Validação local concluída nesta revisão: instalação limpa pelo lockfile,
-sintaxe de 14 arquivos JavaScript, 63 testes aprovados, `npm audit` e
-`npm audit --omit=dev` com zero vulnerabilidades. O processo `server.js`
-iniciou com ambiente isolado, `AI_ENABLED=false` e sem credenciais herdadas.
-Nenhuma geração real foi executada. O resultado remoto deve ser conferido
-nos checks da Pull Request; não há etapa de deploy no workflow.
+Validação local Gemini desta revisão: instalação limpa pelo lockfile,
+sintaxe dos 14 arquivos JavaScript, 78 testes aprovados e auditorias completa
+e de produção com zero vulnerabilidades reportadas. O processo iniciou sem
+credenciais herdadas, com IA desativada e confirmação Free ausente. Respostas
+Gemini, falhas e quotas foram simuladas; nenhuma geração real foi testada.
+Os resultados remotos ficam nos checks da PR. Não há etapa de deploy no
+workflow de testes; o deploy automático do Render é independente.
 
 O repositório já contém `.env` e `node_modules` rastreados. Não foram removidos ou
 incluídos no diff desta proposta. Nilo deve verificar privadamente eventual
@@ -150,8 +219,8 @@ exposição e revogar segredos comprometidos; `.gitignore` não desfaz históric
 As dependências instaladas geram diferenças locais em arquivos rastreados, que
 ficam visíveis e **não entram no commit**. Nenhum histórico foi reescrito.
 
-Após revisão do Nilo, merge e deploy deverão ser autorizados separadamente.
-Depois, com provedor configurado e uso de chave explicitamente autorizado,
+Após merge e publicação automática, com projeto Free configurado e uso de chave
+explicitamente autorizado,
 testar poucas perguntas reais: comparar PEC/PL; explicar aprovação de lei
 federal; comparar deputado/senador. Conferir texto, fontes, limitações e
 `mode: ai` junto com o registro `generated`/uso no provedor. Não basta HTTP 200.

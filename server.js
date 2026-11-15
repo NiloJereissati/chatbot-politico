@@ -1154,7 +1154,7 @@ const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
-    console.info(JSON.stringify({ event: "ai_configuration", enabled: process.env.AI_ENABLED === "true", environmentSource: "process.env; development may use .env.local" }));
+    console.info(JSON.stringify({ event: "ai_configuration", provider: "gemini", enabled: process.env.AI_ENABLED === "true", freeTierConfirmed: process.env.GEMINI_FREE_TIER_CONFIRMED === "true", environmentSource: "process.env; development may use .env.local" }));
   });
 }
 module.exports = { app, responderMensagem, deveUsarIAControlada };

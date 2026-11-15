@@ -4,34 +4,38 @@ const { createAiClient } = require("../services/ai");
 const { educationalResponse } = require("../services/education");
 const base = educationalResponse("Explique a diferença entre PEC e projeto de lei");
 const input = { pergunta: "Explique a diferença entre PEC e projeto de lei", intent: base.intent, respostaBase: base.reply, dados: base.dados, fontes: base.sources };
-const completed = text => ({ ok: true, json: async () => ({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text }] }] }) });
+const candidateData = (text, finishReason = "STOP") => ({ candidates: [{ finishReason, content: { role: "model", parts: [{ text }] } }] });
+const completed = text => ({ ok: true, json: async () => candidateData(text) });
 const setup = (overrides = {}, options = {}) => {
   const events = [], calls = [];
   const client = createAiClient({
-    env: { AI_ENABLED: "true", OPENAI_API_KEY: "test-placeholder-not-a-real-key", ...overrides },
+    env: { AI_ENABLED: "true", GEMINI_FREE_TIER_CONFIRMED: "true", GEMINI_API_KEY: "test-placeholder-not-a-real-key", ...overrides },
     logger: event => events.push(event),
     fetchImpl: async (...args) => { calls.push(args); return completed("Resposta simulada apenas para testes."); },
     ...options,
   });
   return { ...client, events, calls };
 };
-test("geração simulada usa Responses, contexto confiável e limites sem armazenar resposta", async () => {
+test("Gemini nativo simulado usa apenas o modelo Free aprovado, contexto e limites", async () => {
   const client = setup();
   assert.equal(await client.generate(input), "Resposta simulada apenas para testes.");
   assert.equal(client.calls.length, 1);
   const [url, request] = client.calls[0], body = JSON.parse(request.body);
-  assert.equal(url, "https://api.openai.com/v1/responses");
+  assert.equal(url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent");
   assert.equal(request.redirect, "error");
-  assert.equal(body.store, false);
-  assert.equal(body.max_output_tokens, 800);
-  assert.equal(body.reasoning.effort, "minimal");
-  assert.equal(body.input[1].content, input.pergunta);
-  assert.ok(body.input[0].content.includes(base.sources[0].url));
+  assert.equal(new URL(url).search, "");
+  assert.equal(request.headers["x-goog-api-key"], "test-placeholder-not-a-real-key");
+  assert.equal(request.headers.Authorization, undefined);
+  assert.deepEqual(body.generationConfig, { maxOutputTokens: 800, responseMimeType: "text/plain" });
+  assert.equal(body.contents[0].parts[0].text, input.pergunta);
+  assert.ok(body.systemInstruction.parts[0].text.includes(base.sources[0].url));
+  for (const forbidden of ["tools", "cachedContent", "model", "input", "store", "service_tier"]) assert.equal(body[forbidden], undefined);
   assert.deepEqual(client.events, [{ event: "ai_result", reason: "generated" }]);
 });
 for (const [overrides, reason] of [
   [{ AI_ENABLED: undefined }, "disabled"], [{ AI_ENABLED: "false" }, "disabled"],
-  [{ OPENAI_API_KEY: "" }, "missing_key"], [{ AI_TIMEOUT_MS: "0" }, "invalid_configuration"],
+  [{ GEMINI_FREE_TIER_CONFIRMED: undefined }, "free_tier_not_confirmed"], [{ GEMINI_FREE_TIER_CONFIRMED: "false" }, "free_tier_not_confirmed"],
+  [{ GEMINI_API_KEY: "" }, "missing_key"], [{ GEMINI_MODEL: "gemini-4-carbon" }, "invalid_configuration"], [{ GEMINI_MODEL: "gemini-2.5-flash-lite" }, "invalid_configuration"], [{ AI_TIMEOUT_MS: "0" }, "invalid_configuration"],
   [{ AI_MAX_OUTPUT_TOKENS: "999999" }, "invalid_configuration"], [{ AI_DAILY_REQUEST_LIMIT: "infinito" }, "invalid_configuration"],
 ]) test(`configuração segura: ${reason} ${JSON.stringify(overrides)}`, async () => {
   const client = setup(overrides);
@@ -48,7 +52,7 @@ for (const url of ["javascript:alert(1)", "https://www12.senado.leg.br.evil.exam
 }
 test("não chama IA sem dados/fontes nem com entrada/contexto excessivos", async () => {
   const client = setup();
-  for (const patch of [{ dados: null }, { fontes: [] }, { pergunta: "x".repeat(2001) }, { dados: "x".repeat(16001) }]) assert.equal(await client.generate({ ...input, ...patch }), null);
+  for (const patch of [{ dados: null }, { fontes: [] }, { pergunta: "x".repeat(2001) }, { dados: { ...base.dados, excess: "x".repeat(16001) } }]) assert.equal(await client.generate({ ...input, ...patch }), null);
   assert.equal(client.calls.length, 0);
 });
 for (const status of [401, 403, 429, 500, 502, 503, 504]) test(`HTTP ${status} usa fallback, sem retry nem corpo privado nos logs`, async () => {
@@ -59,11 +63,15 @@ for (const status of [401, 403, 429, 500, 502, 503, 504]) test(`HTTP ${status} u
   assert.deepEqual(client.events, [{ event: "ai_result", reason: "provider_http_error", status }]);
 });
 for (const [data, reason] of [
-  [{ status: "incomplete", output_text: "Texto parcial" }, "incomplete_output"],
-  [{ status: "completed", output: [] }, "empty_or_oversized_output"],
-  [{ status: "completed", output_text: "Veja https://example.com/fonte-inventada" }, "untrusted_output_link"],
-  [{ status: "completed", output_text: "Veja HTTPS://example.com/fonte-inventada" }, "untrusted_output_link"],
-  [{ status: "completed", output_text: "[Link](javascript:alert(1))" }, "untrusted_output_link"],
+  [candidateData("Texto parcial", "MAX_TOKENS"), "incomplete_output"],
+  [candidateData(""), "empty_or_oversized_output"],
+  [candidateData("Texto bloqueado", "SAFETY"), "safety_or_finish_blocked"],
+  [{ promptFeedback: { blockReason: "SAFETY" } }, "safety_blocked"],
+  [{ candidates: [] }, "invalid_provider_response"],
+  [{ status: "completed", output_text: "Formato OpenAI não é aceito" }, "invalid_provider_response"],
+  [candidateData("Veja https://example.com/fonte-inventada"), "untrusted_output_link"],
+  [candidateData("Veja HTTPS://example.com/fonte-inventada"), "untrusted_output_link"],
+  [candidateData("[Link](javascript:alert(1))"), "untrusted_output_link"],
 ]) test(`não publica saída inválida: ${reason}`, async () => {
   const client = setup({}, { fetchImpl: async () => ({ ok: true, json: async () => data }) });
   assert.equal(await client.generate(input), null);
@@ -130,11 +138,39 @@ test("requisição concorrente recebe fallback sem duplicar a geração", async 
   assert.equal(client.events.at(-1).reason, "busy");
   release(); assert.equal(await first, "Texto simulado");
 });
-for (const [code, reason] of [["invalid_api_key", "invalid_key"], ["insufficient_quota", "quota_unavailable"], ["model_not_found", "model_unavailable"], ["rate_limit_exceeded", "provider_rate_limit"], ["unsupported_parameter", "invalid_provider_configuration"]]) {
+for (const [code, reason] of [["UNAUTHENTICATED", "invalid_key"], ["FAILED_PRECONDITION", "free_tier_or_project_unavailable"], ["NOT_FOUND", "model_unavailable"], ["RESOURCE_EXHAUSTED", "provider_rate_limit"], ["INVALID_ARGUMENT", "invalid_provider_configuration"], ["PERMISSION_DENIED", "provider_access_denied"]]) {
   test(`diagnóstico sanitizado do provedor: ${code}`, async () => {
-    const client = setup({}, { fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({ error: { code, message: "PRIVATE_TEXT" } }) }) });
+    const client = setup({}, { fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({ error: { status: code, message: "PRIVATE_TEXT" } }) }) });
     assert.equal(await client.generate(input), null);
     assert.equal(client.events.at(-1).reason, reason);
     assert.ok(!JSON.stringify(client.events).includes("PRIVATE_TEXT"));
   });
 }
+test("não troca para OpenAI mesmo se houver configuração legada", async () => {
+  const client = setup({ GEMINI_API_KEY: "", OPENAI_API_KEY: "test-legacy-key" });
+  assert.equal(await client.generate(input), null);
+  assert.equal(client.calls.length, 0);
+});
+test("não encaminha registros pessoais das consultas oficiais para o plano Free", async () => {
+  const client = setup();
+  assert.equal(await client.generate({ ...input, intent: "BuscarCandidatoTSE", dados: { nome: "Fixture", cpf: "fixture-not-real" } }), null);
+  assert.equal(client.events.at(-1).reason, "educational_only");
+  assert.equal(client.calls.length, 0);
+});
+test("email e CPF identificáveis em uma pergunta não são enviados ao provedor", async () => {
+  const client = setup();
+  for (const pergunta of ["Explique PEC; contato: test@example.com", "Explique PEC para CPF 000.000.000-00"]) assert.equal(await client.generate({ ...input, pergunta }), null);
+  assert.equal(client.events.at(-1).reason, "personal_data_detected");
+  assert.equal(client.calls.length, 0);
+});
+test("não exibe partes marcadas como raciocínio", async () => {
+  const client = setup({}, { fetchImpl: async () => ({ ok: true, json: async () => ({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "PRIVATE_THOUGHT", thought: true }, { text: "Texto simulado público" }] } }] }) }) });
+  assert.equal(await client.generate(input), "Texto simulado público");
+  assert.ok(!JSON.stringify(client.events).includes("PRIVATE_THOUGHT"));
+});
+test("chave Gemini inválida é diagnosticada por código permitido, sem expor mensagem", async () => {
+  const client = setup({}, { fetchImpl: async () => ({ ok: false, status: 400, json: async () => ({ error: { status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }], message: "PRIVATE_KEY_TEXT" } }) }) });
+  assert.equal(await client.generate(input), null);
+  assert.equal(client.events.at(-1).reason, "invalid_key");
+  assert.ok(!JSON.stringify(client.events).includes("PRIVATE_KEY_TEXT"));
+});
